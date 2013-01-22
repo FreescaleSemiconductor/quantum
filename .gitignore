@@ -13,3 +13,4 @@ quantum/vcsversion.py
 requirements.txt
 ChangeLog
 .tox/
+bin/quantum-server

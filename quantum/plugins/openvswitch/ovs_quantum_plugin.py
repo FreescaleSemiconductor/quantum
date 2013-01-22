@@ -191,7 +191,7 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
     __native_bulk_support = True
     supported_extension_aliases = ["provider", "router"]
 
-    def __init__(self, configfile=None):
+    def __init__(self, configfile=None): # XXX [SARMA]
         ovs_db_v2.initialize()
         self._parse_network_vlan_ranges()
         ovs_db_v2.sync_vlan_allocations(self.network_vlan_ranges)
@@ -283,6 +283,7 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
                               network)
 
     def _extend_network_dict_provider(self, context, network):
+        # XXX [SARMA]
         if self._check_provider_view_auth(context, network):
             binding = ovs_db_v2.get_network_binding(context.session,
                                                     network['id'])
@@ -301,6 +302,7 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
                 network[provider.SEGMENTATION_ID] = None
 
     def _process_provider_create(self, context, attrs):
+        # XXX [SARMA]
         network_type = attrs.get(provider.NETWORK_TYPE)
         physical_network = attrs.get(provider.PHYSICAL_NETWORK)
         segmentation_id = attrs.get(provider.SEGMENTATION_ID)
@@ -397,6 +399,7 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
         raise q_exc.InvalidInput(error_message=msg)
 
     def create_network(self, context, network):
+        # XXX [SARMA]
         (network_type, physical_network,
          segmentation_id) = self._process_provider_create(context,
                                                           network['network'])
@@ -447,6 +450,7 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
         return net
 
     def delete_network(self, context, id):
+        # XXX [SARMA]
         session = context.session
         with session.begin(subtransactions=True):
             binding = ovs_db_v2.get_network_binding(session, id)

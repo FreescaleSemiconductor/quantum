@@ -82,6 +82,7 @@ class BaseParser(object):
             if key:
                 # Flush previous assignment, if any
                 key, value = self._assignment(key, value)
+                print ' ----> %s: %s' % (key, value)
 
             if line[0] == '[':
                 # Section start

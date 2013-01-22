@@ -136,7 +136,8 @@ class OVSQuantumAgent(object):
 
     def __init__(self, integ_br, tun_br, local_ip,
                  bridge_mappings, root_helper,
-                 polling_interval, reconnect_interval, rpc, enable_tunneling):
+                 polling_interval, reconnect_interval, rpc,
+                 enable_tunneling, mcast_ip, vxlan_learn):
         '''Constructor.
 
         :param integ_br: name of the integration bridge.
@@ -147,7 +148,7 @@ class OVSQuantumAgent(object):
         :param polling_interval: interval (secs) to poll DB.
         :param reconnect_internal: retry interval (secs) on DB error.
         :param rpc: if True use RPC interface to interface with plugin.
-        :param enable_tunneling: if True enable GRE networks.
+        :param enable_tunneling: if True enable GRE or VxLAN networks.
         '''
         self.root_helper = root_helper
         self.available_local_vlans = set(
@@ -165,10 +166,13 @@ class OVSQuantumAgent(object):
         self.tunnel_count = 0
         if self.enable_tunneling:
             self.setup_tunnel_br(tun_br)
+        self.mcast_ip = mcast_ip
+        self.vxlan_learn = vxlan_learn
 
         self.rpc = rpc
         if rpc:
             self.setup_rpc(integ_br)
+
 
     def setup_rpc(self, integ_br):
         mac = utils.get_interface_mac(integ_br)
@@ -794,6 +798,7 @@ def main():
 
     # (TODO) gary - swap with common logging
     logging_config.setup_logging(cfg.CONF)
+    LOG.info (_('ARGS: %s'), sys.argv)
 
     integ_br = cfg.CONF.OVS.integration_bridge
     db_connection_url = cfg.CONF.DATABASE.sql_connection
@@ -804,6 +809,9 @@ def main():
     tun_br = cfg.CONF.OVS.tunnel_bridge
     local_ip = cfg.CONF.OVS.local_ip
     enable_tunneling = cfg.CONF.OVS.enable_tunneling
+    mcast_ip = cfg.CONF.OVS.mcast_ip
+    vxlan_learn = cfg.CONF.OVS.vxlan_learn
+
 
     if enable_tunneling and not local_ip:
         LOG.error("Tunnelling cannot be enabled without a valid local_ip.")
@@ -817,9 +825,16 @@ def main():
         sys.exit(1)
     LOG.info(_("Bridge mappings: %s") % bridge_mappings)
 
+    LOG.info (_('--> db_connection: %s '
+                'integ_br: %s, tun_br: %s, local_ip: %s, bridge_mappings: %s ' \
+                'reconnect_interval: %s, enable_tunneling: %s, mcast_ip: %s'),
+                db_connection_url, integ_br, tun_br, local_ip, bridge_mappings,
+                reconnect_interval, enable_tunneling, mcast_ip)
+
     plugin = OVSQuantumAgent(integ_br, tun_br, local_ip, bridge_mappings,
                              root_helper, polling_interval,
-                             reconnect_interval, rpc, enable_tunneling)
+                             reconnect_interval, rpc, enable_tunneling,
+                             mcast_ip, vxlan_learn)
 
     # Start everything.
     LOG.info("Agent initialized successfully, now running... ")

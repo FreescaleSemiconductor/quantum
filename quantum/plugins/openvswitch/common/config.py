@@ -37,7 +37,7 @@ ovs_opts = [
                 help="List of <physical_network>:<bridge>"),
     cfg.StrOpt('tenant_network_type', default='local',
                help="Network type for tenant networks "
-               "(local, vlan, gre, or none)"),
+               "(local, vlan, gre, vxlan, or none)"),
     cfg.ListOpt('network_vlan_ranges',
                 default=DEFAULT_VLAN_RANGES,
                 help="List of <physical_network>:<vlan_min>:<vlan_max> "
@@ -45,6 +45,9 @@ ovs_opts = [
     cfg.ListOpt('tunnel_id_ranges',
                 default=DEFAULT_TUNNEL_RANGES,
                 help="List of <tun_min>:<tun_max>"),
+
+    cfg.StrOpt('mcast_ip', default=''),
+    cfg.StrOpt('vxlan_learn', default=True),
 ]
 
 agent_opts = [
