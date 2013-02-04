@@ -191,7 +191,7 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
     __native_bulk_support = True
     supported_extension_aliases = ["provider", "router"]
 
-    def __init__(self, configfile=None): # XXX [SARMA]
+    def __init__(self, configfile=None):
         ovs_db_v2.initialize()
         self._parse_network_vlan_ranges()
         ovs_db_v2.sync_vlan_allocations(self.network_vlan_ranges)
@@ -199,6 +199,7 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
         if self.tenant_network_type not in [constants.TYPE_LOCAL,
                                             constants.TYPE_VLAN,
                                             constants.TYPE_GRE,
+                                            constants.TYPE_VXLAN,
                                             constants.TYPE_NONE]:
             LOG.error("Invalid tenant_network_type: %s. "
                       "Agent terminated!",
@@ -209,9 +210,10 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
         if self.enable_tunneling:
             self._parse_tunnel_id_ranges()
             ovs_db_v2.sync_tunnel_allocations(self.tunnel_id_ranges)
-        elif self.tenant_network_type == constants.TYPE_GRE:
-            LOG.error("Tunneling disabled but tenant_network_type is 'gre'. "
-                      "Agent terminated!")
+        elif self.tenant_network_type in [constants.TYPE_GRE,
+                                          constants.TYPE_VXLAN]:
+            LOG.error("Tunneling disabled but tenant_network_type is '%s'. "
+                      "Agent terminated!", self.tenant_network_type)
             sys.exit(1)
         self.agent_rpc = cfg.CONF.AGENT.rpc
         self.setup_rpc()
@@ -283,12 +285,12 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
                               network)
 
     def _extend_network_dict_provider(self, context, network):
-        # XXX [SARMA]
         if self._check_provider_view_auth(context, network):
             binding = ovs_db_v2.get_network_binding(context.session,
                                                     network['id'])
             network[provider.NETWORK_TYPE] = binding.network_type
-            if binding.network_type == constants.TYPE_GRE:
+            if binding.network_type in [constants.TYPE_GRE,
+                                        constants.TYPE_VXLAN]:
                 network[provider.PHYSICAL_NETWORK] = None
                 network[provider.SEGMENTATION_ID] = binding.segmentation_id
             elif binding.network_type == constants.TYPE_FLAT:
@@ -302,7 +304,6 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
                 network[provider.SEGMENTATION_ID] = None
 
     def _process_provider_create(self, context, attrs):
-        # XXX [SARMA]
         network_type = attrs.get(provider.NETWORK_TYPE)
         physical_network = attrs.get(provider.PHYSICAL_NETWORK)
         segmentation_id = attrs.get(provider.SEGMENTATION_ID)
@@ -335,9 +336,9 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
                 msg = _("provider:segmentation_id out of range "
                         "(1 through 4094)")
                 raise q_exc.InvalidInput(error_message=msg)
-        elif network_type == constants.TYPE_GRE:
+        elif network_type in [constants.TYPE_GRE, constants.TYPE_VXLAN]:
             if not self.enable_tunneling:
-                msg = _("GRE networks are not enabled")
+                msg = _("%s networks are not enabled" % (network_type))
                 raise q_exc.InvalidInput(error_message=msg)
             if physical_network_set:
                 msg = _("provider:physical_network specified for GRE "
@@ -399,7 +400,6 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
         raise q_exc.InvalidInput(error_message=msg)
 
     def create_network(self, context, network):
-        # XXX [SARMA]
         (network_type, physical_network,
          segmentation_id) = self._process_provider_create(context,
                                                           network['network'])
@@ -414,7 +414,8 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
                 elif network_type == constants.TYPE_VLAN:
                     (physical_network,
                      segmentation_id) = ovs_db_v2.reserve_vlan(session)
-                elif network_type == constants.TYPE_GRE:
+                elif network_type in [constants.TYPE_GRE,
+                                      constants.TYPE_VXLAN]:
                     segmentation_id = ovs_db_v2.reserve_tunnel(session)
                 # no reservation needed for TYPE_LOCAL
             else:
@@ -450,12 +451,12 @@ class OVSQuantumPluginV2(db_base_plugin_v2.QuantumDbPluginV2,
         return net
 
     def delete_network(self, context, id):
-        # XXX [SARMA]
         session = context.session
         with session.begin(subtransactions=True):
             binding = ovs_db_v2.get_network_binding(session, id)
             super(OVSQuantumPluginV2, self).delete_network(context, id)
-            if binding.network_type == constants.TYPE_GRE:
+            if binding.network_type in [constants.TYPE_GRE,
+                                        constants.TYPE_VXLAN]:
                 ovs_db_v2.release_tunnel(session, binding.segmentation_id,
                                          self.tunnel_id_ranges)
             elif binding.network_type in [constants.TYPE_VLAN,

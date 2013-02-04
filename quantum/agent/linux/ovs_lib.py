@@ -157,7 +157,7 @@ class OVSBridge:
         flow_str = ",".join(flow_expr_arr)
         self.run_ofctl("del-flows", [flow_str])
 
-    def add_tunnel_port(self, port_name, remote_ip):
+    def add_gre_tunnel_port(self, port_name, remote_ip):
         self.run_vsctl(["add-port", self.br_name, port_name])
         self.set_db_attribute("Interface", port_name, "type", "gre")
         self.set_db_attribute("Interface", port_name, "options:remote_ip",
@@ -267,6 +267,30 @@ class OVSBridge:
         except Exception, e:
             LOG.info("Unable to parse regex results. Exception: %s", e)
             return
+
+    def add_vxlan_tunnel_port(self, vni, mcast_ip=None,
+                              udp_port=None, local_ip=None):
+        port_name = 'vxlan-%d' % (int(vni))
+        self.run_vsctl(["add-port", self.br_name, port_name])
+        self.set_db_attribute("Interface", port_name, "type", "vxlan")
+        self.set_db_attribute("Interface", port_name, "options:vni", vni)
+        if mcast_ip:
+            self.set_db_attribute("Interface", port_name, "options:mcast_ip",
+                                  mcast_ip)
+        if udp_port:
+            self.set_db_attribute("Interface", port_name,
+                                  "options:vxlan_udp_port", udp_port)
+        if local_ip:
+            self.set_db_attribute("Interface", port_name, "options:vtep",
+                                  local_ip)
+        return self.get_port_ofport(port_name)
+
+    def get_vxlan_ofport(self, vni):
+        port_name = 'vxlan-%d' % (int(vni))
+        try:
+            return self.get_port_ofport(port_name)
+        except:
+            return None
 
 
 def get_bridge_for_iface(root_helper, iface):

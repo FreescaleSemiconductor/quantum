@@ -64,6 +64,7 @@ class NetworkBinding(model_base.BASEV2):
     network_id = Column(String(36),
                         ForeignKey('networks.id', ondelete="CASCADE"),
                         primary_key=True)
+    # XXX [SARMA]
     # 'gre', 'vlan', 'flat', 'local'
     network_type = Column(String(32), nullable=False)
     physical_network = Column(String(64))

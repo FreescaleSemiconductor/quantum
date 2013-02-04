@@ -46,8 +46,14 @@ ovs_opts = [
                 default=DEFAULT_TUNNEL_RANGES,
                 help="List of <tun_min>:<tun_max>"),
 
-    cfg.StrOpt('mcast_ip', default=''),
-    cfg.StrOpt('vxlan_learn', default=True),
+    cfg.StrOpt('mcast_ip', default='',
+               help="VXLAN Mulitcast IP address to "
+               "send broadcast messages"),
+    cfg.StrOpt('vxlan_udp_port', default='4341',
+               help="UDP port number to listen for VXLAN tunnel traffic"),
+    cfg.StrOpt('mcast_routing_interface', default='eth1',
+               help="Interface on which to add route for "
+               "multicast IP address"),
 ]
 
 agent_opts = [

@@ -42,6 +42,7 @@ from quantum.openstack.common.rpc import dispatcher
 from quantum.plugins.openvswitch.common import config
 from quantum.plugins.openvswitch.common import constants
 
+
 logging.basicConfig()
 LOG = logging.getLogger(__name__)
 
@@ -137,7 +138,8 @@ class OVSQuantumAgent(object):
     def __init__(self, integ_br, tun_br, local_ip,
                  bridge_mappings, root_helper,
                  polling_interval, reconnect_interval, rpc,
-                 enable_tunneling, mcast_ip, vxlan_learn):
+                 enable_tunneling, tenant_network_type,
+                 mcast_ip, vxlan_udp_port, mcast_routing_interface):
         '''Constructor.
 
         :param integ_br: name of the integration bridge.
@@ -149,6 +151,10 @@ class OVSQuantumAgent(object):
         :param reconnect_internal: retry interval (secs) on DB error.
         :param rpc: if True use RPC interface to interface with plugin.
         :param enable_tunneling: if True enable GRE or VxLAN networks.
+        :param tenant_network_type: network type -- flat, vlan, gre, vxlan
+        :param mcast_ip: multicast ip address for VXLAN tunnels.
+        :param vxlan_udp_port: UDP port to listen on for VXLAN traffic.
+        :param mcast_routing_interface: Interface to add multicast route.
         '''
         self.root_helper = root_helper
         self.available_local_vlans = set(
@@ -164,15 +170,17 @@ class OVSQuantumAgent(object):
         self.enable_tunneling = enable_tunneling
         self.local_ip = local_ip
         self.tunnel_count = 0
+        self.tenant_network_type = tenant_network_type
+        self.mcast_ip = mcast_ip
+        self.vxlan_udp_port = vxlan_udp_port
+        self.mcast_routing_interface = mcast_routing_interface
+
         if self.enable_tunneling:
             self.setup_tunnel_br(tun_br)
-        self.mcast_ip = mcast_ip
-        self.vxlan_learn = vxlan_learn
 
         self.rpc = rpc
         if rpc:
             self.setup_rpc(integ_br)
-
 
     def setup_rpc(self, integ_br):
         mac = utils.get_interface_mac(integ_br)
@@ -229,7 +237,7 @@ class OVSQuantumAgent(object):
         if tunnel_ip == self.local_ip:
             return
         tun_name = 'gre-%s' % tunnel_id
-        self.tun_br.add_tunnel_port(tun_name, tunnel_ip)
+        self.tun_br.add_gre_tunnel_port(tun_name, tunnel_ip)
 
     def create_rpc_dispatcher(self):
         '''Get the rpc dispatcher for this manager.
@@ -273,6 +281,33 @@ class OVSQuantumAgent(object):
                                      (lvid, self.patch_int_ofport))
             else:
                 LOG.error("Cannot provision GRE network for net-id=%s "
+                          "- tunneling disabled", net_uuid)
+        elif network_type == constants.TYPE_VXLAN:
+            if self.enable_tunneling:
+                if not self.tun_br.get_vxlan_ofport(segmentation_id):
+                    self.tun_br.add_vxlan_tunnel_port(segmentation_id,
+                                                      self.mcast_ip,
+                                                      self.vxlan_udp_port)
+                vxlan_ofport = self.tun_br.get_vxlan_ofport(segmentation_id)
+                if vxlan_ofport:
+                    # outbound
+                    self.tun_br.add_flow(priority=4,
+                                         in_port=self.patch_int_ofport,
+                                         dl_vlan=lvid,
+                                         actions="output:%s,normal" %
+                                         vxlan_ofport)
+                    # inbound bcast/mcast
+                    self.tun_br.add_flow(priority=3, tun_id=segmentation_id,
+                                         dl_dst=
+                                         "01:00:00:00:00:00/01:00:00:00:00:00",
+                                         actions="mod_vlan_vid:%s,output:%s" %
+                                         (lvid, self.patch_int_ofport))
+                else:
+                    LOG.error("Cannot find VXLAN port 'vxlan-%d' "
+                              "network for net-id=%s ", net_uuid,
+                              segmentation_id)
+            else:
+                LOG.error("Cannot provision VXLAN network for net-id=%s "
                           "- tunneling disabled", net_uuid)
         elif network_type == constants.TYPE_FLAT:
             if physical_network in self.phys_brs:
@@ -325,7 +360,7 @@ class OVSQuantumAgent(object):
             vif_ids) mapping.'''
         LOG.info("Reclaiming vlan = %s from net-id = %s", lvm.vlan, net_uuid)
 
-        if lvm.network_type == constants.TYPE_GRE:
+        if lvm.network_type in [constants.TYPE_GRE, constants.TYPE_VXLAN]:
             if self.enable_tunneling:
                 self.tun_br.delete_flows(tun_id=lvm.segmentation_id)
                 self.tun_br.delete_flows(dl_vlan=lvm.vlan)
@@ -378,7 +413,7 @@ class OVSQuantumAgent(object):
         lvm = self.local_vlan_map[net_uuid]
         lvm.vif_ports[port.vif_id] = port
 
-        if network_type == constants.TYPE_GRE:
+        if network_type in [constants.TYPE_GRE, constants.TYPE_VXLAN]:
             if self.enable_tunneling:
                 # inbound unicast
                 self.tun_br.add_flow(priority=3, tun_id=segmentation_id,
@@ -407,7 +442,7 @@ class OVSQuantumAgent(object):
                      net_uuid)
             return
         lvm = self.local_vlan_map[net_uuid]
-        if lvm.network_type == 'gre':
+        if lvm.network_type == constants.TYPE_GRE:
             if self.enable_tunneling:
                 # remove inbound unicast flow
                 self.tun_br.delete_flows(tun_id=lvm.segmentation_id,
@@ -511,6 +546,8 @@ class OVSQuantumAgent(object):
             phys_veth.link.set_up()
 
     def manage_tunnels(self, tunnel_ips, old_tunnel_ips, db):
+        # XXX [SARMA]
+        pdb.set_trace()
         if self.local_ip in tunnel_ips:
             tunnel_ips.remove(self.local_ip)
         else:
@@ -518,10 +555,11 @@ class OVSQuantumAgent(object):
 
         new_tunnel_ips = tunnel_ips - old_tunnel_ips
         if new_tunnel_ips:
-            LOG.info("Adding tunnels to: %s", new_tunnel_ips)
+            pdb.set_trace()
+            LOG.info("Adding GRE tunnels to: %s", new_tunnel_ips)
             for ip in new_tunnel_ips:
                 tun_name = "gre-" + str(self.tunnel_count)
-                self.tun_br.add_tunnel_port(tun_name, ip)
+                self.tun_br.add_gre_tunnel_port(tun_name, ip)
                 self.tunnel_count += 1
 
     def rollback_until_success(self, db):
@@ -739,7 +777,8 @@ class OVSQuantumAgent(object):
             for tunnel in tunnels:
                 if self.local_ip != tunnel['ip_address']:
                     tun_name = 'gre-%s' % tunnel['id']
-                    self.tun_br.add_tunnel_port(tun_name, tunnel['ip_address'])
+                    self.tun_br.add_gre_tunnel_port(tun_name,
+                                                    tunnel['ip_address'])
         except Exception as e:
             LOG.debug("Unable to sync tunnel IP %s: %s", self.local_ip, e)
             resync = True
@@ -760,8 +799,9 @@ class OVSQuantumAgent(object):
 
                 # Notify the plugin of tunnel IP
                 if self.enable_tunneling and tunnel_sync:
-                    LOG.info("Agent tunnel out of sync with plugin!")
-                    tunnel_sync = self.tunnel_sync()
+                    if self.tenant_network_type == constants.TYPE_GRE:
+                        LOG.info("Agent tunnel out of sync with plugin!")
+                        tunnel_sync = self.tunnel_sync()
 
                 port_info = self.update_ports(ports)
 
@@ -798,7 +838,6 @@ def main():
 
     # (TODO) gary - swap with common logging
     logging_config.setup_logging(cfg.CONF)
-    LOG.info (_('ARGS: %s'), sys.argv)
 
     integ_br = cfg.CONF.OVS.integration_bridge
     db_connection_url = cfg.CONF.DATABASE.sql_connection
@@ -809,13 +848,28 @@ def main():
     tun_br = cfg.CONF.OVS.tunnel_bridge
     local_ip = cfg.CONF.OVS.local_ip
     enable_tunneling = cfg.CONF.OVS.enable_tunneling
+    tenant_network_type = cfg.CONF.OVS.tenant_network_type
     mcast_ip = cfg.CONF.OVS.mcast_ip
-    vxlan_learn = cfg.CONF.OVS.vxlan_learn
+    mcast_routing_interface = cfg.CONF.OVS.mcast_routing_interface
+    vxlan_udp_port = cfg.CONF.OVS.vxlan_udp_port
 
-
-    if enable_tunneling and not local_ip:
-        LOG.error("Tunnelling cannot be enabled without a valid local_ip.")
-        sys.exit(1)
+    if enable_tunneling:
+        import pdb
+        pdb.set_trace()
+        if tenant_network_type == constants.TYPE_GRE:
+            if not local_ip:
+                LOG.error("GRE tunnelling cannot be enabled "
+                          "without a valid local_ip.")
+                sys.exit(1)
+        elif tenant_network_type == constants.TYPE_VXLAN:
+            if not mcast_ip or not mcast_routing_interface:
+                LOG.error("VXLAN tunnelling cannot be enabled "
+                          "without muliticast ip and "
+                          "interface to add route for multicast ip")
+                sys.exit(1)
+        else:
+            LOG.error("Unknown tunnel type: %s", tenant_network_type)
+            sys.exit(1)
 
     try:
         bridge_mappings = q_utils.parse_mappings(cfg.CONF.OVS.bridge_mappings)
@@ -825,17 +879,17 @@ def main():
         sys.exit(1)
     LOG.info(_("Bridge mappings: %s") % bridge_mappings)
 
-    LOG.info (_('--> db_connection: %s '
-                'integ_br: %s, tun_br: %s, local_ip: %s, bridge_mappings: %s ' \
-                'reconnect_interval: %s, enable_tunneling: %s, mcast_ip: %s'),
-                db_connection_url, integ_br, tun_br, local_ip, bridge_mappings,
-                reconnect_interval, enable_tunneling, mcast_ip)
+    LOG.info("--> db_connection: %s "
+             "integ_br: %s, tun_br: %s, local_ip: %s, bridge_mappings: %s "
+             "reconnect_interval: %s, enable_tunneling: %s, mcast_ip: %s",
+             db_connection_url, integ_br, tun_br, local_ip, bridge_mappings,
+             reconnect_interval, enable_tunneling, mcast_ip)
 
     plugin = OVSQuantumAgent(integ_br, tun_br, local_ip, bridge_mappings,
                              root_helper, polling_interval,
                              reconnect_interval, rpc, enable_tunneling,
-                             mcast_ip, vxlan_learn)
-
+                             tenant_network_type, mcast_ip, vxlan_udp_port,
+                             mcast_routing_interface)
     # Start everything.
     LOG.info("Agent initialized successfully, now running... ")
     plugin.daemon_loop(db_connection_url)

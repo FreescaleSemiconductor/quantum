@@ -204,7 +204,7 @@ class OVS_Lib_Test(unittest.TestCase):
                       root_helper=self.root_helper).AndReturn(ofport)
         self.mox.ReplayAll()
 
-        self.assertEqual(self.br.add_tunnel_port(pname, ip), ofport)
+        self.assertEqual(self.br.add_gre_tunnel_port(pname, ip), ofport)
         self.mox.VerifyAll()
 
     def test_add_patch_port(self):
