@@ -209,6 +209,7 @@ class OVSQuantumAgent(object):
     def network_delete(self, context, **kwargs):
         LOG.debug("network_delete received")
         network_id = kwargs.get('network_id')
+        network_type = kwargs.get('network_type')
         LOG.debug("Delete %s", network_id)
         # The network may not be defined on this agent
         lvm = self.local_vlan_map.get(network_id)
@@ -216,6 +217,10 @@ class OVSQuantumAgent(object):
             self.reclaim_local_vlan(network_id, lvm)
         else:
             LOG.debug("Network %s not used on agent.", network_id)
+        if network_type == constants.TYPE_VXLAN:
+            segmentation_id = kwargs.get('segmentation_id')
+            self.tun_br.delete_port ('vxlan-%s' % segmentation_id);
+            LOG.info("Deleted vxlan port: vxlan-%s", segmentation_id)
 
     def port_update(self, context, **kwargs):
         LOG.debug("port_update received")
@@ -294,7 +299,7 @@ class OVSQuantumAgent(object):
                     self.tun_br.add_flow(priority=4,
                                          in_port=self.patch_int_ofport,
                                          dl_vlan=lvid,
-                                         actions="output:%s,normal" %
+                                         actions="strip_vlan,output:%s,normal" %
                                          vxlan_ofport)
                     # inbound bcast/mcast
                     self.tun_br.add_flow(priority=3, tun_id=segmentation_id,
@@ -442,7 +447,7 @@ class OVSQuantumAgent(object):
                      net_uuid)
             return
         lvm = self.local_vlan_map[net_uuid]
-        if lvm.network_type == constants.TYPE_GRE:
+        if lvm.network_type == [constants.TYPE_GRE, constants.TYPE_VXLAN]:
             if self.enable_tunneling:
                 # remove inbound unicast flow
                 self.tun_br.delete_flows(tun_id=lvm.segmentation_id,
@@ -546,8 +551,6 @@ class OVSQuantumAgent(object):
             phys_veth.link.set_up()
 
     def manage_tunnels(self, tunnel_ips, old_tunnel_ips, db):
-        # XXX [SARMA]
-        pdb.set_trace()
         if self.local_ip in tunnel_ips:
             tunnel_ips.remove(self.local_ip)
         else:
@@ -555,7 +558,6 @@ class OVSQuantumAgent(object):
 
         new_tunnel_ips = tunnel_ips - old_tunnel_ips
         if new_tunnel_ips:
-            pdb.set_trace()
             LOG.info("Adding GRE tunnels to: %s", new_tunnel_ips)
             for ip in new_tunnel_ips:
                 tun_name = "gre-" + str(self.tunnel_count)
@@ -596,7 +598,8 @@ class OVSQuantumAgent(object):
                 if self.enable_tunneling:
                     tunnel_ips = set(x.ip_address for x in
                                      db.ovs_tunnel_ips.all())
-                    self.manage_tunnels(tunnel_ips, old_tunnel_ips, db)
+                    if self.tenant_network_type == constants.TYPE_GRE:
+                        self.manage_tunnels(tunnel_ips, old_tunnel_ips, db)
 
                 # Get bindings from OVS bridge.
                 vif_ports = self.int_br.get_vif_ports()
@@ -854,8 +857,6 @@ def main():
     vxlan_udp_port = cfg.CONF.OVS.vxlan_udp_port
 
     if enable_tunneling:
-        import pdb
-        pdb.set_trace()
         if tenant_network_type == constants.TYPE_GRE:
             if not local_ip:
                 LOG.error("GRE tunnelling cannot be enabled "
@@ -881,9 +882,11 @@ def main():
 
     LOG.info("--> db_connection: %s "
              "integ_br: %s, tun_br: %s, local_ip: %s, bridge_mappings: %s "
-             "reconnect_interval: %s, enable_tunneling: %s, mcast_ip: %s",
+             "reconnect_interval: %s, enable_tunneling: %s, mcast_ip: %s"
+             "mcast route interface: %s",
              db_connection_url, integ_br, tun_br, local_ip, bridge_mappings,
-             reconnect_interval, enable_tunneling, mcast_ip)
+             reconnect_interval, enable_tunneling, mcast_ip,
+             mcast_routing_interface)
 
     plugin = OVSQuantumAgent(integ_br, tun_br, local_ip, bridge_mappings,
                              root_helper, polling_interval,
