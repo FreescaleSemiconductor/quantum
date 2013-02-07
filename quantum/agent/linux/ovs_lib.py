@@ -1,5 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # Copyright 2011 Nicira Networks, Inc.
+# Copyright 2013 Freescale, Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -17,6 +18,7 @@
 # @author: Brad Hall, Nicira Networks, Inc.
 # @author: Dan Wendlandt, Nicira Networks, Inc.
 # @author: Dave Lapsley, Nicira Networks, Inc.
+# @author: Seetharama S. Ayyadevara, Freescale, Inc.
 
 import logging
 import re
@@ -279,10 +281,13 @@ class OVSBridge:
                                   mcast_ip)
         if udp_port:
             self.set_db_attribute("Interface", port_name,
-                                  "options:vxlan_udp_port", udp_port)
+                                  "options:udp_port", udp_port)
         if local_ip:
             self.set_db_attribute("Interface", port_name, "options:vtep",
                                   local_ip)
+        LOG.info(_("%s VXLAN interface: %s, mcastip: %s, port: %s, ip: %s"),
+                 "Created" if self.get_port_ofport(port_name) else "Failed to",
+                 port_name, mcast_ip, udp_port, local_ip)
         return self.get_port_ofport(port_name)
 
     def get_vxlan_ofport(self, vni):

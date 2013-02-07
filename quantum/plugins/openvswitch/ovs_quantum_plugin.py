@@ -1,5 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # Copyright 2011 Nicira Networks, Inc.
+# Copyright 2013 Freescale, Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -19,6 +20,7 @@
 # @author: Dave Lapsley, Nicira Networks, Inc.
 # @author: Aaron Rosen, Nicira Networks, Inc.
 # @author: Bob Kukura, Red Hat, Inc.
+# @author: Seetharama S. Ayyadevara, Freescale, Inc.
 
 import logging
 import os

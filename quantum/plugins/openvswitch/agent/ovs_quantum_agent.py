@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # Copyright 2011 Nicira Networks, Inc.
+# Copyright 2013 Freescale, Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -19,6 +20,7 @@
 # @author: Dan Wendlandt, Nicira Networks, Inc.
 # @author: Dave Lapsley, Nicira Networks, Inc.
 # @author: Aaron Rosen, Nicira Networks, Inc.
+# @author: Seetharama S. Ayyadevara, Freescale, Inc.
 
 import logging
 import sys
@@ -177,7 +179,12 @@ class OVSQuantumAgent(object):
 
         if self.enable_tunneling:
             self.setup_tunnel_br(tun_br)
-
+            if self.tenant_network_type == constants.TYPE_VXLAN \
+                    and self.mcast_ip:
+                if utils.route_add_host(self.root_helper,
+                                        self.mcast_ip, None,
+                                        self.mcast_routing_interface) is False:
+                    exit(2)
         self.rpc = rpc
         if rpc:
             self.setup_rpc(integ_br)
@@ -219,7 +226,7 @@ class OVSQuantumAgent(object):
             LOG.debug("Network %s not used on agent.", network_id)
         if network_type == constants.TYPE_VXLAN:
             segmentation_id = kwargs.get('segmentation_id')
-            self.tun_br.delete_port ('vxlan-%s' % segmentation_id);
+            self.tun_br.delete_port('vxlan-%s' % segmentation_id)
             LOG.info("Deleted vxlan port: vxlan-%s", segmentation_id)
 
     def port_update(self, context, **kwargs):
@@ -289,6 +296,7 @@ class OVSQuantumAgent(object):
                           "- tunneling disabled", net_uuid)
         elif network_type == constants.TYPE_VXLAN:
             if self.enable_tunneling:
+                print 'before port create'
                 if not self.tun_br.get_vxlan_ofport(segmentation_id):
                     self.tun_br.add_vxlan_tunnel_port(segmentation_id,
                                                       self.mcast_ip,
@@ -299,12 +307,12 @@ class OVSQuantumAgent(object):
                     self.tun_br.add_flow(priority=4,
                                          in_port=self.patch_int_ofport,
                                          dl_vlan=lvid,
-                                         actions="strip_vlan,output:%s,normal" %
-                                         vxlan_ofport)
+                                         actions="strip_vlan,output:%s"
+                                         % vxlan_ofport)
                     # inbound bcast/mcast
                     self.tun_br.add_flow(priority=3, tun_id=segmentation_id,
-                                         dl_dst=
-                                         "01:00:00:00:00:00/01:00:00:00:00:00",
+                                         #dl_dst=
+                                         #"01:00:00:00:00:00/01:00:00:00:00:00",
                                          actions="mod_vlan_vid:%s,output:%s" %
                                          (lvid, self.patch_int_ofport))
                 else:
@@ -418,14 +426,22 @@ class OVSQuantumAgent(object):
         lvm = self.local_vlan_map[net_uuid]
         lvm.vif_ports[port.vif_id] = port
 
-        if network_type in [constants.TYPE_GRE, constants.TYPE_VXLAN]:
-            if self.enable_tunneling:
+        if self.enable_tunneling:
+            if network_type == constants.TYPE_GRE:
                 # inbound unicast
                 self.tun_br.add_flow(priority=3, tun_id=segmentation_id,
                                      dl_dst=port.vif_mac,
                                      actions="mod_vlan_vid:%s,normal" %
                                      lvm.vlan)
-
+            """
+            if network_type == constants.TYPE_VXLAN:
+                # inbound unicast
+                action_str= "mod_vlan_vid:%s,output:%s,normal" % \
+                    (lvm.vlan, self.patch_int_ofport)
+                self.tun_br.add_flow(priority=3, tun_id=segmentation_id,
+                                     dl_dst=port.vif_mac,
+                                     actions=action_str)
+            """
         self.int_br.set_db_attribute("Port", port.port_name, "tag",
                                      str(lvm.vlan))
         if int(port.ofport) != -1:

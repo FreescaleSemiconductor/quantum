@@ -43,7 +43,7 @@ def execute(cmd, root_helper=None, process_input=None, addl_env=None,
         cmd = shlex.split(root_helper) + cmd
     cmd = map(str, cmd)
 
-    #LOG.debug("Running command: " + " ".join(cmd))
+    LOG.debug("Running command: " + " ".join(cmd))
     env = os.environ.copy()
     if addl_env:
         env.update(addl_env)
@@ -58,7 +58,7 @@ def execute(cmd, root_helper=None, process_input=None, addl_env=None,
     obj.stdin.close()
     m = ("\nCommand: %s\nExit code: %s\nStdout: %r\nStderr: %r" %
         (cmd, obj.returncode, _stdout, _stderr))
-    #LOG.debug(m)
+    LOG.debug(m)
     if obj.returncode and check_exit_code:
         raise RuntimeError(m)
 
@@ -74,3 +74,26 @@ def get_interface_mac(interface):
                        struct.pack('256s', interface[:DEVICE_NAME_LEN]))
     return ''.join(['%02x:' % ord(char)
                    for char in info[MAC_START:MAC_END]])[:-1]
+
+
+def route_add_host(root_helper, ipaddr, gw, dev):
+    if gw and dev:
+        cmd = ['route', 'add', '-host', ipaddr, 'gw', gw, 'dev', gw]
+    elif gw:
+        cmd = ['route', 'add', '-host', ipaddr, 'gw', gw]
+    elif dev:
+        cmd = ['route', 'add', '-host', ipaddr, 'dev', dev]
+    else:
+        return False
+
+    try:
+        execute (['route', 'delete', '-host', ipaddr], root_helper=root_helper)
+    except Exception, e:
+            pass
+
+    try:
+        execute(cmd, root_helper=root_helper)
+        return True
+    except Exception, e:
+            LOG.error("Failed to add %s. Exception: %s", cmd, e)
+    return False
