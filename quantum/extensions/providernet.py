@@ -19,10 +19,8 @@ NETWORK_TYPE = 'provider:network_type'
 PHYSICAL_NETWORK = 'provider:physical_network'
 SEGMENTATION_ID = 'provider:segmentation_id'
 
-# XXX [SARMA]
 NETWORK_TYPE_VALUES = ['flat', 'gre', 'local', 'vlan']
 
-# XXX [SARMA]
 EXTENDED_ATTRIBUTES_2_0 = {
     'networks': {
         NETWORK_TYPE: {'allow_post': True, 'allow_put': True,

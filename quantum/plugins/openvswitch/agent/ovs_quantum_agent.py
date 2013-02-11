@@ -184,7 +184,7 @@ class OVSQuantumAgent(object):
                 if utils.route_add_host(self.root_helper,
                                         self.mcast_ip, None,
                                         self.mcast_routing_interface) is False:
-                    exit(2)
+                    sys.exit(2)
         self.rpc = rpc
         if rpc:
             self.setup_rpc(integ_br)
@@ -214,8 +214,6 @@ class OVSQuantumAgent(object):
                 return network_id
 
     def network_delete(self, context, **kwargs):
-        import pdb
-        pdb.set_trace()
         LOG.debug("network_delete received")
         network_id = kwargs.get('network_id')
         network_type = kwargs.get('network_type')
@@ -882,9 +880,6 @@ def main():
                           "without muliticast ip and "
                           "interface to add route for multicast ip")
                 sys.exit(1)
-        else:
-            LOG.error("Unknown tunnel type: %s", tenant_network_type)
-            sys.exit(1)
 
     try:
         bridge_mappings = q_utils.parse_mappings(cfg.CONF.OVS.bridge_mappings)
@@ -894,7 +889,7 @@ def main():
         sys.exit(1)
     LOG.info(_("Bridge mappings: %s") % bridge_mappings)
 
-    LOG.info("--> db_connection: %s "
+    LOG.info("db_connection: %s "
              "integ_br: %s, tun_br: %s, local_ip: %s, bridge_mappings: %s "
              "reconnect_interval: %s, enable_tunneling: %s, mcast_ip: %s"
              "mcast route interface: %s",
