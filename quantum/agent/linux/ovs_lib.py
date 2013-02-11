@@ -297,6 +297,15 @@ class OVSBridge:
         except:
             return None
 
+    def delete_vxlan_tunnel_port(self, vni):
+        if self.get_vxlan_ofport(vni):
+            try:
+                self.delete_port('vxlan-%s' % vni)
+                LOG.info("Deleted vxlan port: vxlan-%s", vni)
+            except Exception, e:
+                LOG.error("Failed to delete port: %s. Exception: %s",
+                          ('vxlan-%s' % vni), e)
+
 
 def get_bridge_for_iface(root_helper, iface):
     args = ["ovs-vsctl", "--timeout=2", "iface-to-br", iface]

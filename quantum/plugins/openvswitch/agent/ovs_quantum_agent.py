@@ -214,6 +214,8 @@ class OVSQuantumAgent(object):
                 return network_id
 
     def network_delete(self, context, **kwargs):
+        import pdb
+        pdb.set_trace()
         LOG.debug("network_delete received")
         network_id = kwargs.get('network_id')
         network_type = kwargs.get('network_type')
@@ -224,10 +226,6 @@ class OVSQuantumAgent(object):
             self.reclaim_local_vlan(network_id, lvm)
         else:
             LOG.debug("Network %s not used on agent.", network_id)
-        if network_type == constants.TYPE_VXLAN:
-            segmentation_id = kwargs.get('segmentation_id')
-            self.tun_br.delete_port('vxlan-%s' % segmentation_id)
-            LOG.info("Deleted vxlan port: vxlan-%s", segmentation_id)
 
     def port_update(self, context, **kwargs):
         LOG.debug("port_update received")
@@ -311,8 +309,8 @@ class OVSQuantumAgent(object):
                                          % vxlan_ofport)
                     # inbound bcast/mcast
                     self.tun_br.add_flow(priority=3, tun_id=segmentation_id,
-                                         #dl_dst=
-                                         #"01:00:00:00:00:00/01:00:00:00:00:00",
+                                         dl_dst=
+                                         "01:00:00:00:00:00/01:00:00:00:00:00",
                                          actions="mod_vlan_vid:%s,output:%s" %
                                          (lvid, self.patch_int_ofport))
                 else:
@@ -377,6 +375,8 @@ class OVSQuantumAgent(object):
             if self.enable_tunneling:
                 self.tun_br.delete_flows(tun_id=lvm.segmentation_id)
                 self.tun_br.delete_flows(dl_vlan=lvm.vlan)
+                if lvm.network_type == constants.TYPE_VXLAN:
+                    self.tun_br.delete_vxlan_tunnel_port(lvm.segmentation_id)
         elif lvm.network_type == constants.TYPE_FLAT:
             if lvm.physical_network in self.phys_brs:
                 # outbound
@@ -433,15 +433,13 @@ class OVSQuantumAgent(object):
                                      dl_dst=port.vif_mac,
                                      actions="mod_vlan_vid:%s,normal" %
                                      lvm.vlan)
-            """
             if network_type == constants.TYPE_VXLAN:
                 # inbound unicast
-                action_str= "mod_vlan_vid:%s,output:%s,normal" % \
+                action_str= "mod_vlan_vid:%s,output:%s" % \
                     (lvm.vlan, self.patch_int_ofport)
                 self.tun_br.add_flow(priority=3, tun_id=segmentation_id,
                                      dl_dst=port.vif_mac,
                                      actions=action_str)
-            """
         self.int_br.set_db_attribute("Port", port.port_name, "tag",
                                      str(lvm.vlan))
         if int(port.ofport) != -1:
