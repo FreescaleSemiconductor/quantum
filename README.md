@@ -13,14 +13,18 @@ address is required.
 
 ## How to Use ##
 
+```
 git clone https://github.com/FreescaleSemiconductor/quantum.git
+
 git checkout stable/folsom
+```
 
 * set the tenant_network_type to vxlan.
 * configure the multicast ip with mcast_ip
 * configure an interface to send and receive the multicast messages with
  mcast_routing_interface
 
+```
 # Sample ovs_quantum_plugin.ini config file #
 [DATABASE]
 sql_connection = mysql://openstack:openstack@172.16.1.1:3306/quantum
@@ -40,3 +44,4 @@ mcast_routing_interface = eth0
 [AGENT]
 polling_interval = 2
 root_helper = sudo /usr/bin/quantum-rootwrap /etc/quantum/rootwrap.conf
+```
