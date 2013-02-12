@@ -181,10 +181,10 @@ class OVSQuantumAgent(object):
             self.setup_tunnel_br(tun_br)
             if self.tenant_network_type == constants.TYPE_VXLAN \
                     and self.mcast_ip:
-                if utils.route_add_host(self.root_helper,
-                                        self.mcast_ip, None,
-                                        self.mcast_routing_interface) is False:
-                    sys.exit(2)
+                ipdev = ip_lib.IPDevice(self.mcast_routing_interface,
+                                        self.root_helper)
+                ipdev.route.delete_host_dev(self.mcast_ip)
+                ipdev.route.add_host_dev(self.mcast_ip)
         self.rpc = rpc
         if rpc:
             self.setup_rpc(integ_br)

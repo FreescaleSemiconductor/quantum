@@ -367,6 +367,17 @@ class IpRouteCommand(IpDeviceCommandBase):
                     self._as_root('append', subnet, 'proto', 'kernel',
                                   'dev', device)
 
+    def add_host_dev(self, ipaddr):
+        args = ['add', ipaddr, 'dev', self.name]
+        self._as_root(*args)
+
+    def delete_host_dev(self, ipaddr):
+        try:
+            args = ['del', ipaddr]
+            self._as_root(*args)
+        except:
+            return False
+        return True
 
 class IpNetnsCommand(IpCommandBase):
     COMMAND = 'netns'

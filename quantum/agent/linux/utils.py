@@ -74,26 +74,3 @@ def get_interface_mac(interface):
                        struct.pack('256s', interface[:DEVICE_NAME_LEN]))
     return ''.join(['%02x:' % ord(char)
                    for char in info[MAC_START:MAC_END]])[:-1]
-
-
-def route_add_host(root_helper, ipaddr, gw, dev):
-    if gw and dev:
-        cmd = ['route', 'add', '-host', ipaddr, 'gw', gw, 'dev', gw]
-    elif gw:
-        cmd = ['route', 'add', '-host', ipaddr, 'gw', gw]
-    elif dev:
-        cmd = ['route', 'add', '-host', ipaddr, 'dev', dev]
-    else:
-        return False
-
-    try:
-        execute (['route', 'delete', '-host', ipaddr], root_helper=root_helper)
-    except Exception, e:
-            pass
-
-    try:
-        execute(cmd, root_helper=root_helper)
-        return True
-    except Exception, e:
-            LOG.error("Failed to add %s. Exception: %s", cmd, e)
-    return False
